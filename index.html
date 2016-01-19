@@ -14,29 +14,91 @@
 var inlineApp = {
   data: {},
   username: null,
-  password: null,
+  token: null,
+  state: null,
   NOT_ASSIGNED: '[NOT ASSIGNED]',
   start: function() {
     var org = $('#org').val(), repo = $('#repo').val();
     inlineApp.username = $('#username').val();
-    inlineApp.password = $('#password').val();
-    if (!org || !repo || !inlineApp.username || !inlineApp.password) {
-      alert('invalid values');
+    inlineApp.token = $('#token').val();
+    inlineApp.state = $('#state').val();
+    if (!(inlineApp.username && inlineApp.token && org && repo && inlineApp.state)) {
       return;
     }
     inlineApp.data = {};
     inlineApp.requestWithBasicAuth('https://api.github.com/repos/' + org + '/' + repo + '/issues', inlineApp.handleRes);
   },
+  saveInfo: function() {
+    var org = $('#org').val(), repo = $('#repo').val(), username = $('#username').val(), token = $('#token').val(), state = $('#state').val();
+    localStorage.setItem('username', username);
+    localStorage.setItem('token', token);
+    localStorage.setItem('org', org);
+    localStorage.setItem('repo', repo);
+    localStorage.setItem('state', state);
+  },
+  clearInfo: function() {
+    localStorage.removeItem('username');
+    localStorage.removeItem('token');
+    localStorage.removeItem('org');
+    localStorage.removeItem('repo');
+    localStorage.removeItem('state');
+  },
+  restoreInfo: function() {
+    var username = localStorage.getItem('username') || inlineApp.getQueryParam('username', '')
+    , token = localStorage.getItem('token') || inlineApp.getQueryParam('token', '')
+    , org = localStorage.getItem('org') || inlineApp.getQueryParam('org', '')
+    , repo = localStorage.getItem('repo') || inlineApp.getQueryParam('repo', '');
+    $('#username').val(username);
+    $('#token').val(token);
+    $('#org').val(org);
+    $('#repo').val(repo);
+  },
   requestWithBasicAuth: function(url, success) {
+    inlineApp.showLoading();
     $.ajax({
       type: 'GET',
       url: url,
       beforeSend: function(xhr) {
-        var credentials = btoa(inlineApp.username + ':' + inlineApp.password);
+        var credentials = btoa(inlineApp.username + ':' + inlineApp.token);
         xhr.setRequestHeader('Authorization', 'Basic ' + credentials);
       },
-      success: success
+      data: {
+        state: inlineApp.state
+      },
+      success: function(res, status, xhr) {
+        inlineApp.hideLoading();
+        success(res, status, xhr);
+      },
+      error: function(xhr, mes, e) {
+        inlineApp.hideLoading();
+        alert('[REQUEST ERROR] ' + mes);
+        console.log(e);
+      }
     });
+  },
+  timer: null,
+  showLoading: function() {
+    $('#loading').css('display', 'block');
+    var time = 0, limit = 10;
+    inlineApp.timer = setInterval(function() {
+      var text = 'Loading', loop = time;
+      while (loop > 0) {
+        text += '.';
+        loop--;
+      }
+      time++;
+      if (time > limit) {
+        time = 0;
+      }
+      $('#loading').text(text);
+      $('#loading').css('color', (time % 2) ? '#333' : '#999');
+    }, 50);
+  },
+  hideLoading: function() {
+    $('#loading').css('display', 'none');
+    if (inlineApp.timer) {
+      clearInterval(inlineApp.timer);
+    }
   },
   handleRes: function(res, status, xhr) {
     for (var i = 0; i < res.length; i++) {
@@ -72,6 +134,7 @@ var inlineApp = {
   renderData: function() {
     var dataTable = $('#dataTable'), thead = dataTable.find('thead'), tbody = dataTable.find('tbody'), keys = Object.keys(inlineApp.data), max = 0, all = 0, assigned = 0;
 
+    thead.empty();
     for (var i = 0; i < keys.length; i++) {
       if (max < inlineApp.data[keys[i]].length) {
         max = inlineApp.data[keys[i]].length;
@@ -98,16 +161,42 @@ var inlineApp = {
       for (var j = 0; j < keys.length; j++) {
         var td = $('<td></td>'), issues = inlineApp.data[keys[j]];
         if (issues[i]) {
-          var a = $('<a></a>'), issue = issues[i];
+          var a = $('<a></a>'), issue = issues[i], sp;
+          if (issue.milestone) {
+            a = $('<a class="label label-default milestones"></a>');
+            a.text(issue.milestone.title);
+            a.attr('href', issue.milestone.html_url);
+            a.attr('target', '_blank');
+            td.append(a);
+          }
+          for (var k = 0; k < issue.labels.length; k++) {
+            sp = $('<span class="label labels"></span>'), label = issue.labels[k];
+            sp.text(label.name);
+            sp.css({
+              color: (inlineApp.nearbyWhite(label.color)) ? '#333' : '#f0f0f0',
+              backgroundColor: '#' + label.color
+            });
+            td.append(sp);
+          }
+          a = $('<a></a>');
           a.attr('href', issue.html_url);
           a.attr('target', '_blank');
           a.text('#' + issue.number + ' ' + issue.title);
           td.append(a);
+          if (inlineApp.state == 'all') {
+            sp = $('<span class="label ' + ((issue.state == 'open') ? 'label-info' : 'label-default')+ '"></span>');
+            sp.text(issue.state);
+            td.append(sp);
+          }
         }
         tr.append(td);
       }
       tbody.append(tr);
    }
+  },
+  nearbyWhite: function(code) {
+    var r = parseInt(code.substring(0, 2), 16), g = parseInt(code.substring(2, 4), 16), b = parseInt(code.substring(4, 6), 16);
+    return (r > 200 && g > 200) || (r > 150 && g > 150 && b > 150);
   },
   getQueryParam: function(name, defaultVal) {
     var r = new RegExp(name + "=([^&]+)");
@@ -121,29 +210,80 @@ var inlineApp = {
   getQueryParamNum: function(name, defaultVal) {
     var r = getQueryParam(name, defaultVal);
     return (r === null) ? null : +r;
+  },
+  toggleVisibility: function() {
+    if ($('#hideMilestones').is(':checked')) {
+      $('.milestones').hide();
+    } else {
+      $('.milestones').show();
+    }
+    if ($('#hideLabels').is(':checked')) {
+      $('.labels').hide();
+    } else {
+      $('.labels').show();
+    }
   }
 };
 
 $(function() {
-  $('#username').val(inlineApp.getQueryParam('username', ''));
-  $('#password').val(inlineApp.getQueryParam('password', ''));
-  $('#org').val(inlineApp.getQueryParam('org', ''));
-  $('#repo').val(inlineApp.getQueryParam('repo', ''));
+  inlineApp.restoreInfo();
+  inlineApp.start();
 });
 </script>
 </head>
 <body>
 
-<h3>github issues by assignee</h3>
-username:<input type="text" id="username" name="username" value="" /><br />
-password:<input type="password" id="password" name="password" value=""><br />
-org/repo:<input type="text" id="org" name="org" value="" />/<input type="text" id="repo" name="repo" value="" /><br />
-<input type="button" id="button" value="submit" onclick="inlineApp.start()">
+<div class="container">
 
-<table id="dataTable" class="table">
-<thead></thead>
-<tbody></tbody>
-</table>
+  <h3>github issues by assignee</h3>
+
+  <form onsubmit="inlineApp.start(); return false;">
+    <button type="button" id="saveInfo" class="btn btn-info" onclick="inlineApp.saveInfo()">Save input data into LocalStorage</button>
+    <button type="button" id="clearInfo" class="btn btn-warning" onclick="inlineApp.clearInfo()">Clear LocalStorage</button>
+    <div class="form-group">
+      <label for="username">username</label>
+      <input type="text" class="form-control" id="username" placeholder="username">
+    </div>
+    <div class="form-group">
+      <label for="token">personal access token (or password)</label>
+      <input type="password" class="form-control" id="token" placeholder="personal access token (or password)">
+      <a href="https://github.com/settings/tokens" target="_blank">Generate my personal access token</a>
+    </div>
+    <div class="form-group">
+      <label for="org">org (or user)/repo</label>
+      <div class="form-inline">
+        <input type="text" class="form-control" id="org" placeholder="org (or user)">/<input type="text" class="form-control" id="repo" placeholder="repo">
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="state">state</label>
+      <div class="form-inline">
+        <select class="form-control" id="state">
+          <option value="open">open</option>
+          <option value="closed">closed</option>
+          <option value="all">all</option>
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-success">Search Issues</button>
+  </form>
+
+  <div class="form-group form-inline">
+    <label><input type="checkbox" id="hideMilestones" value="1" onclick="inlineApp.toggleVisibility()" />hide milestones</label>
+    &nbsp;<label><input type="checkbox" id="hideLabels" value="1" onclick="inlineApp.toggleVisibility()" />hide labels</label>
+  </div>
+
+  <h3 id="loading" style="display: none;"></h3>
+</div>
+
+<div class="row-fluid">
+
+  <table id="dataTable" class="table">
+  <thead></thead>
+  <tbody></tbody>
+  </table>
+
+</div>
 
 </body>
 </html>
