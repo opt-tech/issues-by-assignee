@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta charset="utf-8">
+<title>github issues by assignee</title>
+<meta name="description" content="">
+<meta name="author" content="">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+<link rel="shortcut icon" href="">
+<script src="https://code.jquery.com/jquery-1.12.0.min.js"></script>
+<script type="text/javascript">
+var inlineApp = {
+  data: {},
+  username: null,
+  password: null,
+  NOT_ASSIGNED: '[NOT ASSIGNED]',
+  start: function() {
+    var org = $('#org').val(), repo = $('#repo').val();
+    inlineApp.username = $('#username').val();
+    inlineApp.password = $('#password').val();
+    if (!org || !repo || !inlineApp.username || !inlineApp.password) {
+      alert('invalid values');
+      return;
+    }
+    inlineApp.data = {};
+    inlineApp.requestWithBasicAuth('https://api.github.com/repos/' + org + '/' + repo + '/issues', inlineApp.handleRes);
+  },
+  requestWithBasicAuth: function(url, success) {
+    $.ajax({
+      type: 'GET',
+      url: url,
+      beforeSend: function(xhr) {
+        var credentials = btoa(inlineApp.username + ':' + inlineApp.password);
+        xhr.setRequestHeader('Authorization', 'Basic ' + credentials);
+      },
+      success: success
+    });
+  },
+  handleRes: function(res, status, xhr) {
+    for (var i = 0; i < res.length; i++) {
+      inlineApp.registerData(res[i]);
+    }
+    var next = inlineApp.retrieveNextFromLink(xhr.getResponseHeader('Link'));
+    if (next) {
+      inlineApp.requestWithBasicAuth(next, inlineApp.handleRes);
+    } else {
+      inlineApp.renderData();
+    }
+  },
+  registerData: function(d) {
+    var login = (d.assignee) ? d.assignee.login : inlineApp.NOT_ASSIGNED;
+    if (!inlineApp.data[login]) {
+      inlineApp.data[login] = [];
+    }
+    inlineApp.data[login].push(d);
+  },
+  retrieveNextFromLink: function(str) {
+    if (!str) {
+      return str;
+    }
+    var links = str.split(', ');
+    for (var i = 0; i < links.length; i++) {
+      var parsed = links[i].split('; ');
+      if (parsed[1] == 'rel="next"') {
+         return parsed[0].replace(/(^<|>$)/g, '');
+      }
+    }
+    return null;
+  },
+  renderData: function() {
+    var dataTable = $('#dataTable'), thead = dataTable.find('thead'), tbody = dataTable.find('tbody'), keys = Object.keys(inlineApp.data), max = 0, all = 0, assigned = 0;
+
+    for (var i = 0; i < keys.length; i++) {
+      if (max < inlineApp.data[keys[i]].length) {
+        max = inlineApp.data[keys[i]].length;
+      }
+      if (inlineApp.NOT_ASSIGNED != keys[i]) {
+        assigned += inlineApp.data[keys[i]].length;
+      }
+      all += inlineApp.data[keys[i]].length;
+    }
+    var tr = $('<tr></tr>');
+    tr.append('<th colspan="' + keys.length + '">assigned ' + assigned + ' / ' + all + '</th>')
+    thead.append(tr);
+
+    var tr = $('<tr></tr>');
+    for (var i = 0; i < keys.length; i++) {
+      var th = $('<th></th>').text(keys[i] + '(' + inlineApp.data[keys[i]].length + ')');
+      tr.append(th);
+    }
+    thead.append(tr);
+
+    tbody.empty();
+    for (var i = 0; i < max; i++) {
+      var tr = $('<tr></tr>');
+      for (var j = 0; j < keys.length; j++) {
+        var td = $('<td></td>'), issues = inlineApp.data[keys[j]];
+        if (issues[i]) {
+          var a = $('<a></a>'), issue = issues[i];
+          a.attr('href', issue.html_url);
+          a.attr('target', '_blank');
+          a.text('#' + issue.number + ' ' + issue.title);
+          td.append(a);
+        }
+        tr.append(td);
+      }
+      tbody.append(tr);
+   }
+  },
+  getQueryParam: function(name, defaultVal) {
+    var r = new RegExp(name + "=([^&]+)");
+    var m = location.search.match(r);
+    if (m && m[1]) {
+      return (m[1] === "null") ? null : m[1];
+    } else {
+      return defaultVal;
+    }
+  },
+  getQueryParamNum: function(name, defaultVal) {
+    var r = getQueryParam(name, defaultVal);
+    return (r === null) ? null : +r;
+  }
+};
+
+$(function() {
+  $('#username').val(inlineApp.getQueryParam('username', ''));
+  $('#password').val(inlineApp.getQueryParam('password', ''));
+  $('#org').val(inlineApp.getQueryParam('org', ''));
+  $('#repo').val(inlineApp.getQueryParam('repo', ''));
+});
+</script>
+</head>
+<body>
+
+<h3>github issues by assignee</h3>
+username:<input type="text" id="username" name="username" value="" /><br />
+password:<input type="password" id="password" name="password" value=""><br />
+org/repo:<input type="text" id="org" name="org" value="" />/<input type="text" id="repo" name="repo" value="" /><br />
+<input type="button" id="button" value="submit" onclick="inlineApp.start()">
+
+<table id="dataTable" class="table">
+<thead></thead>
+<tbody></tbody>
+</table>
+
+</body>
+</html>
