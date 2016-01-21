@@ -6,5 +6,5 @@ http://opt-tech.github.io/issues-by-assignee/
 
 # Usage
 
-- Input all forms and push the submit button.
-- With LocalStorage, you can restore data to the form inputs.
+- Input all forms and push "Search issues" button.
+- You can restore data to the form inputs with LocalStorage.
