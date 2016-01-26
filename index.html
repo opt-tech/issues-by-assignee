@@ -13,45 +13,75 @@
 <script type="text/javascript">
 var inlineApp = {
   data: {},
+  urlsNum: 0,
+  doneUrlsNum: 0,
   username: null,
   token: null,
   state: null,
   NOT_ASSIGNED: '[NOT ASSIGNED]',
   start: function() {
-    var org = $('#org').val(), repo = $('#repo').val();
+    var orgs = $('input[name=org]').map(function(k, v) {
+      return $(v).val();
+    }), repos = $('input[name=repo]').map(function(k, v) {
+      return $(v).val();
+    });
     inlineApp.username = $('#username').val();
     inlineApp.token = $('#token').val();
     inlineApp.state = $('#state').val();
-    if (!(inlineApp.username && inlineApp.token && org && repo && inlineApp.state)) {
+    if (!(inlineApp.username && inlineApp.token && orgs && repos && inlineApp.state) || orgs.length == 0 || repos.length == 0 || !orgs[0] || !repos[0] || orgs.length != repos.length) {
       return;
     }
     inlineApp.data = {};
-    inlineApp.requestWithBasicAuth('https://api.github.com/repos/' + org + '/' + repo + '/issues', inlineApp.handleRes);
+    inlineApp.urlsNum = orgs.length;
+    inlineApp.doneUrlsNum = 0;
+    for (var i = 0; i < orgs.length; i++) {
+      var org = orgs[i], repo = repos[i];
+      inlineApp.requestWithBasicAuth('https://api.github.com/repos/' + org + '/' + repo + '/issues', inlineApp.handleRes);
+    }
   },
   saveInfo: function() {
-    var org = $('#org').val(), repo = $('#repo').val(), username = $('#username').val(), token = $('#token').val(), state = $('#state').val();
+    var username = $('#username').val(), token = $('#token').val(), state = $('#state').val(), orgs = $('input[name=org]').map(function(k, v) {
+      return $(v).val();
+    }), repos = $('input[name=repo]').map(function(k, v) {
+      return $(v).val();
+    });
     localStorage.setItem('username', username);
     localStorage.setItem('token', token);
-    localStorage.setItem('org', org);
-    localStorage.setItem('repo', repo);
+    localStorage.setItem('orgs', JSON.stringify(orgs));
+    localStorage.setItem('repos', JSON.stringify(repos));
     localStorage.setItem('state', state);
   },
   clearInfo: function() {
     localStorage.removeItem('username');
     localStorage.removeItem('token');
-    localStorage.removeItem('org');
-    localStorage.removeItem('repo');
+    localStorage.removeItem('orgs');
+    localStorage.removeItem('repos');
     localStorage.removeItem('state');
   },
   restoreInfo: function() {
     var username = localStorage.getItem('username') || inlineApp.getQueryParam('username', '')
     , token = localStorage.getItem('token') || inlineApp.getQueryParam('token', '')
-    , org = localStorage.getItem('org') || inlineApp.getQueryParam('org', '')
-    , repo = localStorage.getItem('repo') || inlineApp.getQueryParam('repo', '');
+    , orgs = localStorage.getItem('orgs') || inlineApp.getQueryParam('orgs', '')
+    , repos = localStorage.getItem('repos') || inlineApp.getQueryParam('repos', '');
     $('#username').val(username);
     $('#token').val(token);
-    $('#org').val(org);
-    $('#repo').val(repo);
+    
+    if (orgs && repos) {
+      try {
+        orgs = JSON.parse(orgs);
+        repos = JSON.parse(repos);
+        for (var i = 0; i < orgs.length; i++) {
+          if (i == 0) {
+            $('input[name=org]').val(orgs[i]);
+            $('input[name=repo]').val(repos[i]);
+          } else {
+            inlineApp.addRepo(orgs[i], repos[i]);
+          }
+        }
+      } catch(e) {
+        console.log(e);
+      }
+    }
   },
   requestWithBasicAuth: function(url, success) {
     inlineApp.showLoading();
@@ -108,7 +138,10 @@ var inlineApp = {
     if (next) {
       inlineApp.requestWithBasicAuth(next, inlineApp.handleRes);
     } else {
-      inlineApp.renderData();
+      inlineApp.doneUrlsNum++;
+      if (inlineApp.doneUrlsNum == inlineApp.urlsNum) {
+        inlineApp.renderData();
+      }
     }
   },
   registerData: function(d) {
@@ -132,7 +165,15 @@ var inlineApp = {
     return null;
   },
   renderData: function() {
-    var dataTable = $('#dataTable'), thead = dataTable.find('thead'), tbody = dataTable.find('tbody'), keys = Object.keys(inlineApp.data), max = 0, all = 0, assigned = 0;
+    var dataTable = $('#dataTable'), thead = dataTable.find('thead'), tbody = dataTable.find('tbody'), rawKeys = Object.keys(inlineApp.data), max = 0, all = 0, assigned = 0, keys = [];
+
+    rawKeys.sort();
+    keys.push(inlineApp.NOT_ASSIGNED);
+    for (var i = 0; i < rawKeys.length; i++) {
+      if (rawKeys[i] != inlineApp.NOT_ASSIGNED) {
+        keys.push(rawKeys[i]);
+      }
+    }
 
     thead.empty();
     for (var i = 0; i < keys.length; i++) {
@@ -161,7 +202,13 @@ var inlineApp = {
       for (var j = 0; j < keys.length; j++) {
         var td = $('<td></td>'), issues = inlineApp.data[keys[j]];
         if (issues[i]) {
-          var a = $('<a></a>'), issue = issues[i], sp;
+          var a = $('<a></a>'), issue = issues[i], sp, urlParts = issue.url.split('/')
+
+          //org and repo (naive impl) https://api.github.com/repos/org/repo/issues/:id
+          sp = $('<span class="label label-info repoNames"></span>'), label = issue.labels[k];
+          sp.text(urlParts[4] + '/' + urlParts[5]);
+          td.append(sp);
+
           if (issue.milestone) {
             a = $('<a class="label label-default milestones"></a>');
             a.text(issue.milestone.title);
@@ -193,6 +240,11 @@ var inlineApp = {
       }
       tbody.append(tr);
    }
+
+   if (inlineApp.urlsNum == 1) {
+     $('#hideRepoNames').attr('checked', 'checked');
+     inlineApp.toggleVisibility();
+   }
   },
   nearbyWhite: function(code) {
     var r = parseInt(code.substring(0, 2), 16), g = parseInt(code.substring(2, 4), 16), b = parseInt(code.substring(4, 6), 16);
@@ -212,6 +264,11 @@ var inlineApp = {
     return (r === null) ? null : +r;
   },
   toggleVisibility: function() {
+    if ($('#hideRepoNames').is(':checked')) {
+      $('.repoNames').hide();
+    } else {
+      $('.repoNames').show();
+    }
     if ($('#hideMilestones').is(':checked')) {
       $('.milestones').hide();
     } else {
@@ -222,6 +279,33 @@ var inlineApp = {
     } else {
       $('.labels').show();
     }
+  },
+  addRepo: function(orgVal, repoVal) {
+    var box = $(document.createElement('div')), org = $(document.createElement('input')), repo = $(document.createElement('input')), btn = $(document.createElement('button'));
+    box.addClass('form-inline');
+    org.attr({
+      type: 'text',
+      name: 'org',
+      placeholder: 'org (or user)'
+    }).addClass('form-control');
+    if (orgVal) {
+      org.val(orgVal);
+    }
+    repo.attr({
+      type: 'text',
+      name: 'repo',
+      placeholder: 'repo'
+    }).addClass('form-control');
+    if (repoVal) {
+      repo.val(repoVal);
+    }
+    btn.attr({
+      type: 'button'
+    }).addClass('btn btn-warning')
+    .text('Remove')
+    .click(function(){ box.remove() });
+    box.append(org).append('/').append(repo).append(btn);
+    $('#repos').append(box);
   }
 };
 
@@ -238,8 +322,8 @@ $(function() {
   <h3>github issues by assignee</h3>
 
   <form onsubmit="inlineApp.start(); return false;">
-    <button type="button" id="saveInfo" class="btn btn-info" onclick="inlineApp.saveInfo()">Save input data into LocalStorage</button>
-    <button type="button" id="clearInfo" class="btn btn-warning" onclick="inlineApp.clearInfo()">Clear LocalStorage</button>
+    <button type="button" class="btn btn-info" onclick="inlineApp.saveInfo()">Save input data into LocalStorage</button>
+    <button type="button" class="btn btn-warning" onclick="inlineApp.clearInfo()">Clear LocalStorage</button>
     <div class="form-group">
       <label for="username">username</label>
       <input type="text" class="form-control" id="username" placeholder="username">
@@ -251,9 +335,12 @@ $(function() {
     </div>
     <div class="form-group">
       <label for="org">org (or user)/repo</label>
-      <div class="form-inline">
-        <input type="text" class="form-control" id="org" placeholder="org (or user)">/<input type="text" class="form-control" id="repo" placeholder="repo">
+      <div id="repos">
+        <div class="form-inline">
+          <input type="text" class="form-control" name="org" placeholder="org (or user)">/<input type="text" class="form-control" name="repo" placeholder="repo">
+        </div>
       </div>
+      <button type="button" class="btn btn-info" onclick="inlineApp.addRepo()">More Repo</button>
     </div>
     <div class="form-group">
       <label for="state">state</label>
@@ -269,7 +356,8 @@ $(function() {
   </form>
 
   <div class="form-group form-inline">
-    <label><input type="checkbox" id="hideMilestones" value="1" onclick="inlineApp.toggleVisibility()" />hide milestones</label>
+    <label><input type="checkbox" id="hideRepoNames" value="1" onclick="inlineApp.toggleVisibility()" />hide repo names</label>
+    &nbsp;<label><input type="checkbox" id="hideMilestones" value="1" onclick="inlineApp.toggleVisibility()" />hide milestones</label>
     &nbsp;<label><input type="checkbox" id="hideLabels" value="1" onclick="inlineApp.toggleVisibility()" />hide labels</label>
   </div>
 
