@@ -1,10 +1,25 @@
 # Intro
 
-This is HTML tool only made by HTML5 + JS. This tool shows github issues by assignee.
+This is a HTML toolset for github only made by HTML5 + JS.
 
-http://opt-tech.github.io/issues-by-assignee/
 
 # Usage
 
-- Input all forms and push "Search issues" button.
+- Input all forms and push "Search" button.
 - You can restore data to the form inputs with LocalStorage.
+
+# Views
+
+### issues by assignee
+
+- Show issues by assignee
+- http://opt-tech.github.io/issues-by-assignee/
+
+### contributions by contributors
+
+- Show contributions by contributors
+- http://opt-tech.github.io/issues-by-assignee/contributions.html
+
+# Lisence
+
+MIT Lisence

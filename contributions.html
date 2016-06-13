@@ -3,7 +3,7 @@
 <head>
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta charset="utf-8">
-<title>github issues by assignee</title>
+<title>github contributions by contributors</title>
 <meta name="description" content="">
 <meta name="author" content="">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,12 +13,15 @@
 <script type="text/javascript">
 var inlineApp = {
   data: {},
+  summary: {},
   urlsNum: 0,
   doneUrlsNum: 0,
   username: null,
   token: null,
   state: null,
-  NOT_ASSIGNED: '[NOT ASSIGNED]',
+  start: null,
+  end: null,
+  UNKNOWN: '[UNKNOWN]',
   start: function() {
     var orgs = $('input[name=org]').map(function(k, v) {
       return $(v).val();
@@ -27,45 +30,52 @@ var inlineApp = {
     });
     inlineApp.username = $('#username').val();
     inlineApp.token = $('#token').val();
-    inlineApp.state = $('#state').val();
-    if (!(inlineApp.username && inlineApp.token && orgs && repos && inlineApp.state) || orgs.length == 0 || repos.length == 0 || !orgs[0] || !repos[0] || orgs.length != repos.length) {
+    if (!(inlineApp.username && inlineApp.token && orgs && repos) || orgs.length == 0 || repos.length == 0 || !orgs[0] || !repos[0] || orgs.length != repos.length) {
       return;
     }
+    inlineApp.start = ($('#start').val()) ? new Date($('#start').val() + ' 00:00:00') : null;
+    inlineApp.end = ($('#end').val()) ? new Date($('#end').val() + ' 23:59:59') : null;
     inlineApp.data = {};
     inlineApp.urlsNum = orgs.length;
     inlineApp.doneUrlsNum = 0;
     for (var i = 0; i < orgs.length; i++) {
       var org = orgs[i], repo = repos[i];
-      inlineApp.requestWithBasicAuth('https://api.github.com/repos/' + org + '/' + repo + '/issues', inlineApp.handleRes);
+      inlineApp.requestWithBasicAuth('https://api.github.com/repos/' + org + '/' + repo + '/stats/contributors', inlineApp.handleRes);
     }
   },
   saveInfo: function() {
-    var username = $('#username').val(), token = $('#token').val(), state = $('#state').val(), orgs = $('input[name=org]').map(function(k, v) {
+    var username = $('#username').val(), token = $('#token').val(), orgs = $('input[name=org]').map(function(k, v) {
       return $(v).val();
     }), repos = $('input[name=repo]').map(function(k, v) {
       return $(v).val();
-    });
+    }), start = $('#start').val(), end = $('#end').val();
     localStorage.setItem('username', username);
     localStorage.setItem('token', token);
     localStorage.setItem('orgs', JSON.stringify(orgs));
     localStorage.setItem('repos', JSON.stringify(repos));
-    localStorage.setItem('state', state);
+    localStorage.setItem('start', start);
+    localStorage.setItem('end', end);
   },
   clearInfo: function() {
     localStorage.removeItem('username');
     localStorage.removeItem('token');
     localStorage.removeItem('orgs');
     localStorage.removeItem('repos');
-    localStorage.removeItem('state');
+    localStorage.removeItem('start');
+    localStorage.removeItem('end');
   },
   restoreInfo: function() {
     var username = localStorage.getItem('username') || inlineApp.getQueryParam('username', '')
     , token = localStorage.getItem('token') || inlineApp.getQueryParam('token', '')
     , orgs = localStorage.getItem('orgs') || inlineApp.getQueryParam('orgs', '')
-    , repos = localStorage.getItem('repos') || inlineApp.getQueryParam('repos', '');
+    , repos = localStorage.getItem('repos') || inlineApp.getQueryParam('repos', '')
+    , start = localStorage.getItem('start') || inlineApp.getQueryParam('start', '')
+    , end = localStorage.getItem('end') || inlineApp.getQueryParam('end', '');
     $('#username').val(username);
     $('#token').val(token);
-    
+    $('#start').val(start);
+    $('#end').val(end);
+
     if (orgs && repos) {
       try {
         orgs = JSON.parse(orgs);
@@ -145,11 +155,25 @@ var inlineApp = {
     }
   },
   registerData: function(d) {
-    var login = (d.assignee) ? d.assignee.login : inlineApp.NOT_ASSIGNED;
+    var login = (d.author) ? d.author.login : inlineApp.UNKNOWN;
     if (!inlineApp.data[login]) {
-      inlineApp.data[login] = [];
+      inlineApp.data[login] = {
+        additions: 0,
+        deletions: 0,
+        commits: 0
+      };
     }
-    inlineApp.data[login].push(d);
+    if (d.weeks) {
+      for (var i = 0; i < d.weeks.length; i++) {
+        var week = d.weeks[i];
+        if ((!inlineApp.start || Math.round(inlineApp.start.getTime() / 1000) <= week.w) &&
+          (!inlineApp.end || week.w <= Math.round(inlineApp.end.getTime() / 1000))) {
+          inlineApp.data[login].additions += week.a;
+          inlineApp.data[login].deletions += week.d;
+          inlineApp.data[login].commits += week.c;
+        }
+      }
+    }
   },
   retrieveNextFromLink: function(str) {
     if (!str) {
@@ -164,87 +188,77 @@ var inlineApp = {
     }
     return null;
   },
+  makeSummary: function() {
+    var desc = function(a, b) {
+      if (+a.value < +b.value) {
+        return 1;
+      } else if (+a.value > +b.value) {
+        return -1;
+      } else {
+        return 0;
+      }
+    };
+    inlineApp.summary = {
+      additions: [],
+      deletions: [],
+      addAndDel: [],
+      commits: [],
+      additionsPerCommit: [],
+      deletionsPerCommit: [],
+      addAndDelPerCommit: [],
+    };
+    for (var k in inlineApp.data) {
+      var d = inlineApp.data[k];
+      inlineApp.summary.additions.push({name: k, value: d.additions});
+      inlineApp.summary.deletions.push({name: k, value: d.deletions});
+      inlineApp.summary.addAndDel.push({name: k, value: d.additions + d.deletions});
+      inlineApp.summary.commits.push({name: k, value: d.commits});
+      inlineApp.summary.additionsPerCommit.push({name: k, value: (d.commits) ? (d.additions / d.commits).toFixed(2) : 0});
+      inlineApp.summary.deletionsPerCommit.push({name: k, value: (d.commits) ? (d.deletions / d.commits).toFixed(2) : 0});
+      inlineApp.summary.addAndDelPerCommit.push({name: k, value: (d.commits) ? ((d.additions + d.deletions) / d.commits).toFixed(2) : 0});
+    }
+    inlineApp.summary.additions.sort(desc);
+    inlineApp.summary.deletions.sort(desc);
+    inlineApp.summary.addAndDel.sort(desc);
+    inlineApp.summary.commits.sort(desc);
+    inlineApp.summary.additionsPerCommit.sort(desc);
+    inlineApp.summary.deletionsPerCommit.sort(desc);
+    inlineApp.summary.addAndDelPerCommit.sort(desc);
+  },
   renderData: function() {
     var dataTable = $('#dataTable'), thead = dataTable.find('thead'), tbody = dataTable.find('tbody'), rawKeys = Object.keys(inlineApp.data), max = 0, all = 0, assigned = 0, keys = [];
-
-    rawKeys.sort();
-    keys.push(inlineApp.NOT_ASSIGNED);
-    for (var i = 0; i < rawKeys.length; i++) {
-      if (rawKeys[i] != inlineApp.NOT_ASSIGNED) {
-        keys.push(rawKeys[i]);
-      }
-    }
+    inlineApp.makeSummary();
 
     thead.empty();
-    for (var i = 0; i < keys.length; i++) {
-      if (max < inlineApp.data[keys[i]].length) {
-        max = inlineApp.data[keys[i]].length;
-      }
-      if (inlineApp.NOT_ASSIGNED != keys[i]) {
-        assigned += inlineApp.data[keys[i]].length;
-      }
-      all += inlineApp.data[keys[i]].length;
-    }
     var tr = $('<tr></tr>');
-    tr.append('<th colspan="' + keys.length + '">assigned ' + assigned + ' / ' + all + '</th>')
-    thead.append(tr);
-
-    var tr = $('<tr></tr>');
-    for (var i = 0; i < keys.length; i++) {
-      var th = $('<th></th>').text(keys[i] + '(' + inlineApp.data[keys[i]].length + ')');
-      tr.append(th);
-    }
+    tr.append($('<th colspan="2"></th>').text('additions'));
+    tr.append($('<th colspan="2"></th>').text('deletions'));
+    tr.append($('<th colspan="2"></th>').text('addAndDel'));
+    tr.append($('<th colspan="2"></th>').text('commits'));
+    tr.append($('<th colspan="2"></th>').text('additionsPerCommit'));
+    tr.append($('<th colspan="2"></th>').text('deletionsPerCommit'));
+    tr.append($('<th colspan="2"></th>').text('addAndDelPerCommit'));
     thead.append(tr);
 
     tbody.empty();
-    for (var i = 0; i < max; i++) {
+    for (var i = 0; i < inlineApp.summary.additions.length; i++) {
       var tr = $('<tr></tr>');
-      for (var j = 0; j < keys.length; j++) {
-        var td = $('<td></td>'), issues = inlineApp.data[keys[j]];
-        if (issues[i]) {
-          var a = $('<a></a>'), issue = issues[i], sp, urlParts = issue.url.split('/')
-
-          //org and repo (naive impl) https://api.github.com/repos/org/repo/issues/:id
-          sp = $('<span class="label label-info repoNames"></span>'), label = issue.labels[k];
-          sp.text(urlParts[4] + '/' + urlParts[5]);
-          td.append(sp);
-
-          if (issue.milestone) {
-            a = $('<a class="label label-default milestones"></a>');
-            a.text(issue.milestone.title);
-            a.attr('href', issue.milestone.html_url);
-            a.attr('target', '_blank');
-            td.append(a);
-          }
-          for (var k = 0; k < issue.labels.length; k++) {
-            sp = $('<span class="label labels"></span>'), label = issue.labels[k];
-            sp.text(label.name);
-            sp.css({
-              color: (inlineApp.nearbyWhite(label.color)) ? '#333' : '#f0f0f0',
-              backgroundColor: '#' + label.color
-            });
-            td.append(sp);
-          }
-          a = $('<a></a>');
-          a.attr('href', issue.html_url);
-          a.attr('target', '_blank');
-          a.text('#' + issue.number + ' ' + issue.title);
-          td.append(a);
-          if (inlineApp.state == 'all') {
-            sp = $('<span class="label ' + ((issue.state == 'open') ? 'label-info' : 'label-default')+ '"></span>');
-            sp.text(issue.state);
-            td.append(sp);
-          }
-        }
-        tr.append(td);
-      }
+      tr.append($('<td></td>').text(inlineApp.summary.additions[i].name));
+      tr.append($('<td></td>').text(inlineApp.summary.additions[i].value));
+      tr.append($('<td></td>').text(inlineApp.summary.deletions[i].name));
+      tr.append($('<td></td>').text(inlineApp.summary.deletions[i].value));
+      tr.append($('<td></td>').text(inlineApp.summary.addAndDel[i].name));
+      tr.append($('<td></td>').text(inlineApp.summary.addAndDel[i].value));
+      tr.append($('<td></td>').text(inlineApp.summary.commits[i].name));
+      tr.append($('<td></td>').text(inlineApp.summary.commits[i].value));
+      tr.append($('<td></td>').text(inlineApp.summary.additionsPerCommit[i].name));
+      tr.append($('<td></td>').text(inlineApp.summary.additionsPerCommit[i].value));
+      tr.append($('<td></td>').text(inlineApp.summary.deletionsPerCommit[i].name));
+      tr.append($('<td></td>').text(inlineApp.summary.deletionsPerCommit[i].value));
+      tr.append($('<td></td>').text(inlineApp.summary.addAndDelPerCommit[i].name));
+      tr.append($('<td></td>').text(inlineApp.summary.addAndDelPerCommit[i].value));
       tbody.append(tr);
-   }
-
-   if (inlineApp.urlsNum == 1) {
-     $('#hideRepoNames').attr('checked', 'checked');
-     inlineApp.toggleVisibility();
-   }
+    }
   },
   nearbyWhite: function(code) {
     var r = parseInt(code.substring(0, 2), 16), g = parseInt(code.substring(2, 4), 16), b = parseInt(code.substring(4, 6), 16);
@@ -262,23 +276,6 @@ var inlineApp = {
   getQueryParamNum: function(name, defaultVal) {
     var r = getQueryParam(name, defaultVal);
     return (r === null) ? null : +r;
-  },
-  toggleVisibility: function() {
-    if ($('#hideRepoNames').is(':checked')) {
-      $('.repoNames').hide();
-    } else {
-      $('.repoNames').show();
-    }
-    if ($('#hideMilestones').is(':checked')) {
-      $('.milestones').hide();
-    } else {
-      $('.milestones').show();
-    }
-    if ($('#hideLabels').is(':checked')) {
-      $('.labels').hide();
-    } else {
-      $('.labels').show();
-    }
   },
   addRepo: function(orgVal, repoVal) {
     var box = $(document.createElement('div')), org = $(document.createElement('input')), repo = $(document.createElement('input')), btn = $(document.createElement('button'));
@@ -319,7 +316,7 @@ $(function() {
 
 <div class="container">
 
-  <h3>github issues by assignee</h3>
+  <h3>github contributions by contributors</h3>
 
   <form onsubmit="inlineApp.start(); return false;">
     <button type="button" class="btn btn-info" onclick="inlineApp.saveInfo()">Save input data into LocalStorage</button>
@@ -343,23 +340,13 @@ $(function() {
       <button type="button" class="btn btn-info" onclick="inlineApp.addRepo()">More Repo</button>
     </div>
     <div class="form-group">
-      <label for="state">state</label>
+      <label for="state">span</label>
       <div class="form-inline">
-        <select class="form-control" id="state">
-          <option value="open">open</option>
-          <option value="closed">closed</option>
-          <option value="all">all</option>
-        </select>
+        <input type="date" class="form-control" name="start" id="start" placeholder="start">〜<input type="date" class="form-control" name="end" id="end" placeholder="end">
       </div>
     </div>
     <button type="submit" class="btn btn-success">Search</button>
   </form>
-
-  <div class="form-group form-inline">
-    <label><input type="checkbox" id="hideRepoNames" value="1" onclick="inlineApp.toggleVisibility()" />hide repo names</label>
-    &nbsp;<label><input type="checkbox" id="hideMilestones" value="1" onclick="inlineApp.toggleVisibility()" />hide milestones</label>
-    &nbsp;<label><input type="checkbox" id="hideLabels" value="1" onclick="inlineApp.toggleVisibility()" />hide labels</label>
-  </div>
 
   <h3 id="loading" style="display: none;"></h3>
 </div>
