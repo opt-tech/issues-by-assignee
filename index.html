@@ -65,7 +65,7 @@ var inlineApp = {
     , repos = localStorage.getItem('repos') || inlineApp.getQueryParam('repos', '');
     $('#username').val(username);
     $('#token').val(token);
-    
+
     if (orgs && repos) {
       try {
         orgs = JSON.parse(orgs);
@@ -145,11 +145,11 @@ var inlineApp = {
     }
   },
   registerData: function(d) {
-    var login = (d.assignee) ? d.assignee.login : inlineApp.NOT_ASSIGNED;
-    if (!inlineApp.data[login]) {
-      inlineApp.data[login] = [];
+    var assignee = (d.assignee) ? d.assignee.login : inlineApp.NOT_ASSIGNED;
+    if (!inlineApp.data[assignee]) {
+      inlineApp.data[assignee] = [];
     }
-    inlineApp.data[login].push(d);
+    inlineApp.data[assignee].push(d);
   },
   retrieveNextFromLink: function(str) {
     if (!str) {
@@ -165,33 +165,41 @@ var inlineApp = {
     return null;
   },
   renderData: function() {
-    var dataTable = $('#dataTable'), thead = dataTable.find('thead'), tbody = dataTable.find('tbody'), rawKeys = Object.keys(inlineApp.data), max = 0, all = 0, assigned = 0, keys = [];
+    var dataTable = $('#dataTable');
+    var thead = dataTable.find('thead');
+    var tbody = dataTable.find('tbody');
+    var rawKeys = Object.keys(inlineApp.data);
+    var max = 0; // most assigned person's issues 
+    var all = 0;
+    var assigned = 0;
+    var assignees = [];
 
     rawKeys.sort();
-    keys.push(inlineApp.NOT_ASSIGNED);
+    assignees.push(inlineApp.NOT_ASSIGNED);
     for (var i = 0; i < rawKeys.length; i++) {
       if (rawKeys[i] != inlineApp.NOT_ASSIGNED) {
-        keys.push(rawKeys[i]);
+        assignees.push(rawKeys[i]);
       }
+    }
+
+    for (var i = 0; i < assignees.length; i++) {
+      if (max < inlineApp.data[assignees[i]].length) {
+        max = inlineApp.data[assignees[i]].length;
+      }
+      if (inlineApp.NOT_ASSIGNED != assignees[i]) {
+        assigned += inlineApp.data[assignees[i]].length;
+      }
+      all += inlineApp.data[assignees[i]].length;
     }
 
     thead.empty();
-    for (var i = 0; i < keys.length; i++) {
-      if (max < inlineApp.data[keys[i]].length) {
-        max = inlineApp.data[keys[i]].length;
-      }
-      if (inlineApp.NOT_ASSIGNED != keys[i]) {
-        assigned += inlineApp.data[keys[i]].length;
-      }
-      all += inlineApp.data[keys[i]].length;
-    }
     var tr = $('<tr></tr>');
-    tr.append('<th colspan="' + keys.length + '">assigned ' + assigned + ' / ' + all + '</th>')
+    tr.append('<th colspan="' + assignees.length + '">assigned ' + assigned + ' / ' + all + '</th>')
     thead.append(tr);
 
     var tr = $('<tr></tr>');
-    for (var i = 0; i < keys.length; i++) {
-      var th = $('<th></th>').text(keys[i] + '(' + inlineApp.data[keys[i]].length + ')');
+    for (var i = 0; i < assignees.length; i++) {
+      var th = $('<th></th>').text(assignees[i] + '(' + inlineApp.data[assignees[i]].length + ')');
       tr.append(th);
     }
     thead.append(tr);
@@ -199,8 +207,8 @@ var inlineApp = {
     tbody.empty();
     for (var i = 0; i < max; i++) {
       var tr = $('<tr></tr>');
-      for (var j = 0; j < keys.length; j++) {
-        var td = $('<td></td>'), issues = inlineApp.data[keys[j]];
+      for (var j = 0; j < assignees.length; j++) {
+        var td = $('<td></td>'), issues = inlineApp.data[assignees[j]];
         if (issues[i]) {
           var a = $('<a></a>'), issue = issues[i], sp, urlParts = issue.url.split('/')
 
