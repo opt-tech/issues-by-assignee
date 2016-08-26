@@ -210,39 +210,7 @@ var inlineApp = {
       for (var j = 0; j < assignees.length; j++) {
         var td = $('<td></td>'), issues = inlineApp.data[assignees[j]];
         if (issues[i]) {
-          var a = $('<a></a>'), issue = issues[i], sp, urlParts = issue.url.split('/')
-
-          //org and repo (naive impl) https://api.github.com/repos/org/repo/issues/:id
-          sp = $('<span class="label label-info repoNames"></span>'), label = issue.labels[k];
-          sp.text(urlParts[4] + '/' + urlParts[5]);
-          td.append(sp);
-
-          if (issue.milestone) {
-            a = $('<a class="label label-default milestones"></a>');
-            a.text(issue.milestone.title);
-            a.attr('href', issue.milestone.html_url);
-            a.attr('target', '_blank');
-            td.append(a);
-          }
-          for (var k = 0; k < issue.labels.length; k++) {
-            sp = $('<span class="label labels"></span>'), label = issue.labels[k];
-            sp.text(label.name);
-            sp.css({
-              color: (inlineApp.nearbyWhite(label.color)) ? '#333' : '#f0f0f0',
-              backgroundColor: '#' + label.color
-            });
-            td.append(sp);
-          }
-          a = $('<a></a>');
-          a.attr('href', issue.html_url);
-          a.attr('target', '_blank');
-          a.text('#' + issue.number + ' ' + issue.title);
-          td.append(a);
-          if (inlineApp.state == 'all') {
-            sp = $('<span class="label ' + ((issue.state == 'open') ? 'label-info' : 'label-default')+ '"></span>');
-            sp.text(issue.state);
-            td.append(sp);
-          }
+          inlineApp.renderIssue(issues[i], td)
         }
         tr.append(td);
       }
@@ -253,6 +221,42 @@ var inlineApp = {
      $('#hideRepoNames').attr('checked', 'checked');
      inlineApp.toggleVisibility();
    }
+  },
+  renderIssue: function(issue, td) {
+
+    var a = $('<a></a>'), sp, urlParts = issue.url.split('/');
+
+    //org and repo (naive impl) https://api.github.com/repos/org/repo/issues/:id
+    sp = $('<span class="label label-info repoNames"></span>'), label = issue.labels[k];
+    sp.text(urlParts[4] + '/' + urlParts[5]);
+    td.append(sp);
+
+    if (issue.milestone) {
+      a = $('<a class="label label-default milestones"></a>');
+      a.text(issue.milestone.title);
+      a.attr('href', issue.milestone.html_url);
+      a.attr('target', '_blank');
+      td.append(a);
+    }
+    for (var k = 0; k < issue.labels.length; k++) {
+      sp = $('<span class="label labels"></span>'), label = issue.labels[k];
+      sp.text(label.name);
+      sp.css({
+        color: (inlineApp.nearbyWhite(label.color)) ? '#333' : '#f0f0f0',
+        backgroundColor: '#' + label.color
+      });
+      td.append(sp);
+    }
+    a = $('<a></a>');
+    a.attr('href', issue.html_url);
+    a.attr('target', '_blank');
+    a.text('#' + issue.number + ' ' + issue.title);
+    td.append(a);
+    if (inlineApp.state == 'all') {
+      sp = $('<span class="label ' + ((issue.state == 'open') ? 'label-info' : 'label-default')+ '"></span>');
+      sp.text(issue.state);
+      td.append(sp);
+    }
   },
   nearbyWhite: function(code) {
     var r = parseInt(code.substring(0, 2), 16), g = parseInt(code.substring(2, 4), 16), b = parseInt(code.substring(4, 6), 16);
