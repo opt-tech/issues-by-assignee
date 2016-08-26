@@ -18,6 +18,7 @@ var inlineApp = {
   username: null,
   token: null,
   state: null,
+  issueType: null,
   NOT_ASSIGNED: '[NOT ASSIGNED]',
   start: function() {
     var orgs = $('input[name=org]').map(function(k, v) {
@@ -25,12 +26,14 @@ var inlineApp = {
     }), repos = $('input[name=repo]').map(function(k, v) {
       return $(v).val();
     });
+    inlineApp.issueType = $('#issueType').val();
     inlineApp.username = $('#username').val();
     inlineApp.token = $('#token').val();
     inlineApp.state = $('#state').val();
-    if (!(inlineApp.username && inlineApp.token && orgs && repos && inlineApp.state) || orgs.length == 0 || repos.length == 0 || !orgs[0] || !repos[0] || orgs.length != repos.length) {
+    if (!(inlineApp.username && inlineApp.token && orgs && repos && inlineApp.state && inlineApp.issueType) || orgs.length == 0 || repos.length == 0 || !orgs[0] || !repos[0] || orgs.length != repos.length) {
       return;
     }
+    inlineApp.data = { all: 0, assigned: 0, issues: {} };
     inlineApp.data.issues[inlineApp.NOT_ASSIGNED] = [];
     inlineApp.urlsNum = orgs.length;
     inlineApp.doneUrlsNum = 0;
@@ -146,6 +149,11 @@ var inlineApp = {
   },
   registerData: function(d) {
     inlineApp.data.all += 1;
+    if (d.pull_request) {
+      d.isPr = true;
+    } else {
+      d.isPr = false;
+    }
     if (d.assignees.length == 0) {
       inlineApp.data.issues[inlineApp.NOT_ASSIGNED].push(d)
     } else {
@@ -174,11 +182,30 @@ var inlineApp = {
   },
   renderData: function() {
     var dataTable = $('#dataTable');
-    var thead = dataTable.find('thead');
-    var tbody = dataTable.find('tbody');
-    var rawKeys = Object.keys(inlineApp.data.issues);
+    var data = {};
+    var filterObj = function(obj, cond) {
+      var res = {};
+      var keys = Object.keys(obj);
+      for (i = 0; i < keys.length; i++) {
+        res[keys[i]] = obj[keys[i]].filter(cond)
+      }
+      return res;
+    }
+    if (inlineApp.issueType === 'all') {
+      data = inlineApp.data.issues;
+    } else if (inlineApp.issueType === 'onlyIssues') {
+      data = filterObj(inlineApp.data.issues, function(d){ return !d.isPr; } )
+    } else if (inlineApp.issueType === 'onlyPRs') {
+      data = filterObj(inlineApp.data.issues, function(d){ return d.isPr; } )
+    }
+    inlineApp.renderTable(data, dataTable);
+  },
+  renderTable: function(data, table) {
+    var thead = table.find('thead');
+    var tbody = table.find('tbody');
+    var rawKeys = Object.keys(data);
     var max = 0; // most assigned person's issues
-    var assignees = [];
+    var assignees = []; // assignees sorted by name
 
     rawKeys.sort();
     assignees.push(inlineApp.NOT_ASSIGNED);
@@ -189,8 +216,8 @@ var inlineApp = {
     }
 
     for (var i = 0; i < assignees.length; i++) {
-      if (max < inlineApp.data.issues[assignees[i]].length) {
-        max = inlineApp.data.issues[assignees[i]].length;
+      if (max < data[assignees[i]].length) {
+        max = data[assignees[i]].length;
       }
     }
 
@@ -201,7 +228,7 @@ var inlineApp = {
 
     var tr = $('<tr></tr>');
     for (var i = 0; i < assignees.length; i++) {
-      var th = $('<th></th>').text(assignees[i] + '(' + inlineApp.data.issues[assignees[i]].length + ')');
+      var th = $('<th></th>').text(assignees[i] + '(' + data[assignees[i]].length + ')');
       tr.append(th);
     }
     thead.append(tr);
@@ -210,19 +237,19 @@ var inlineApp = {
     for (var i = 0; i < max; i++) {
       var tr = $('<tr></tr>');
       for (var j = 0; j < assignees.length; j++) {
-        var td = $('<td></td>'), issues = inlineApp.data.issues[assignees[j]];
+        var td = $('<td></td>'), issues = data[assignees[j]];
         if (issues[i]) {
           inlineApp.renderIssue(issues[i], td)
         }
         tr.append(td);
       }
       tbody.append(tr);
-   }
+    }
 
-   if (inlineApp.urlsNum == 1) {
-     $('#hideRepoNames').attr('checked', 'checked');
-     inlineApp.toggleVisibility();
-   }
+    if (inlineApp.urlsNum == 1) {
+      $('#hideRepoNames').attr('checked', 'checked');
+    }
+    inlineApp.toggleVisibility();
   },
   renderIssue: function(issue, td) {
 
@@ -232,6 +259,12 @@ var inlineApp = {
     sp = $('<span class="label label-info repoNames"></span>'), label = issue.labels[k];
     sp.text(urlParts[4] + '/' + urlParts[5]);
     td.append(sp);
+
+    if (issue.isPr) {
+      var sp = $('<span class="label label-primary isPr"></span>')
+      sp.text('PullRequest');
+      td.append(sp);
+    }
 
     if (issue.milestone) {
       a = $('<a class="label label-default milestones"></a>');
@@ -292,6 +325,11 @@ var inlineApp = {
       $('.labels').hide();
     } else {
       $('.labels').show();
+    }
+    if (inlineApp.issueType !== 'all') {
+      $('.isPr').hide();
+    } else {
+      $('.isPr').show();
     }
   },
   addRepo: function(orgVal, repoVal) {
@@ -363,6 +401,16 @@ $(function() {
           <option value="open">open</option>
           <option value="closed">closed</option>
           <option value="all">all</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="issueType">issue type</label>
+      <div class="form-inline">
+        <select class="form-control" id="issueType">
+          <option value="all">issues & pull requests</option>
+          <option value="onlyIssues">only issues</option>
+          <option value="onlyPRs">only pull requests</option>
         </select>
       </div>
     </div>
