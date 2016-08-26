@@ -146,11 +146,17 @@ var inlineApp = {
     }
   },
   registerData: function(d) {
-    var assignee = (d.assignee) ? d.assignee.login : inlineApp.NOT_ASSIGNED;
-    if (!inlineApp.data[assignee]) {
-      inlineApp.data[assignee] = [];
+    if (d.assignees.length == 0) {
+      inlineApp.data[inlineApp.NOT_ASSIGNED].push(d)
+    } else {
+      for (var i = 0; i < d.assignees.length; i++) {
+        var assignee = d.assignees[i].login
+        if (!inlineApp.data[assignee]) {
+          inlineApp.data[assignee] = [];
+        }
+        inlineApp.data[assignee].push(d);
+      }
     }
-    inlineApp.data[assignee].push(d);
   },
   retrieveNextFromLink: function(str) {
     if (!str) {
