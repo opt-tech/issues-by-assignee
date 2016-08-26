@@ -12,7 +12,7 @@
 <script src="https://code.jquery.com/jquery-1.12.0.min.js"></script>
 <script type="text/javascript">
 var inlineApp = {
-  data: {},
+  data: { all: 0, assigned: 0, issues: {} },
   urlsNum: 0,
   doneUrlsNum: 0,
   username: null,
@@ -31,8 +31,7 @@ var inlineApp = {
     if (!(inlineApp.username && inlineApp.token && orgs && repos && inlineApp.state) || orgs.length == 0 || repos.length == 0 || !orgs[0] || !repos[0] || orgs.length != repos.length) {
       return;
     }
-    inlineApp.data = {};
-    inlineApp.data[inlineApp.NOT_ASSIGNED] = [];
+    inlineApp.data.issues[inlineApp.NOT_ASSIGNED] = [];
     inlineApp.urlsNum = orgs.length;
     inlineApp.doneUrlsNum = 0;
     for (var i = 0; i < orgs.length; i++) {
@@ -146,11 +145,19 @@ var inlineApp = {
     }
   },
   registerData: function(d) {
-    var assignee = (d.assignee) ? d.assignee.login : inlineApp.NOT_ASSIGNED;
-    if (!inlineApp.data[assignee]) {
-      inlineApp.data[assignee] = [];
+    inlineApp.data.all += 1;
+    if (d.assignees.length == 0) {
+      inlineApp.data.issues[inlineApp.NOT_ASSIGNED].push(d)
+    } else {
+      inlineApp.data.assigned += 1;
+      for (var i = 0; i < d.assignees.length; i++) {
+        var assignee = d.assignees[i].login
+        if (!inlineApp.data.issues[assignee]) {
+          inlineApp.data.issues[assignee] = [];
+        }
+        inlineApp.data.issues[assignee].push(d);
+      }
     }
-    inlineApp.data[assignee].push(d);
   },
   retrieveNextFromLink: function(str) {
     if (!str) {
@@ -169,10 +176,8 @@ var inlineApp = {
     var dataTable = $('#dataTable');
     var thead = dataTable.find('thead');
     var tbody = dataTable.find('tbody');
-    var rawKeys = Object.keys(inlineApp.data);
-    var max = 0; // most assigned person's issues 
-    var all = 0;
-    var assigned = 0;
+    var rawKeys = Object.keys(inlineApp.data.issues);
+    var max = 0; // most assigned person's issues
     var assignees = [];
 
     rawKeys.sort();
@@ -184,23 +189,19 @@ var inlineApp = {
     }
 
     for (var i = 0; i < assignees.length; i++) {
-      if (max < inlineApp.data[assignees[i]].length) {
-        max = inlineApp.data[assignees[i]].length;
+      if (max < inlineApp.data.issues[assignees[i]].length) {
+        max = inlineApp.data.issues[assignees[i]].length;
       }
-      if (inlineApp.NOT_ASSIGNED != assignees[i]) {
-        assigned += inlineApp.data[assignees[i]].length;
-      }
-      all += inlineApp.data[assignees[i]].length;
     }
 
     thead.empty();
     var tr = $('<tr></tr>');
-    tr.append('<th colspan="' + assignees.length + '">assigned ' + assigned + ' / ' + all + '</th>')
+    tr.append('<th colspan="' + assignees.length + '">assigned ' + inlineApp.data.assigned + ' / ' + inlineApp.data.all + '</th>')
     thead.append(tr);
 
     var tr = $('<tr></tr>');
     for (var i = 0; i < assignees.length; i++) {
-      var th = $('<th></th>').text(assignees[i] + '(' + inlineApp.data[assignees[i]].length + ')');
+      var th = $('<th></th>').text(assignees[i] + '(' + inlineApp.data.issues[assignees[i]].length + ')');
       tr.append(th);
     }
     thead.append(tr);
@@ -209,7 +210,7 @@ var inlineApp = {
     for (var i = 0; i < max; i++) {
       var tr = $('<tr></tr>');
       for (var j = 0; j < assignees.length; j++) {
-        var td = $('<td></td>'), issues = inlineApp.data[assignees[j]];
+        var td = $('<td></td>'), issues = inlineApp.data.issues[assignees[j]];
         if (issues[i]) {
           inlineApp.renderIssue(issues[i], td)
         }
