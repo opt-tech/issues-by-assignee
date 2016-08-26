@@ -65,7 +65,7 @@ var inlineApp = {
     , repos = localStorage.getItem('repos') || inlineApp.getQueryParam('repos', '');
     $('#username').val(username);
     $('#token').val(token);
-    
+
     if (orgs && repos) {
       try {
         orgs = JSON.parse(orgs);
@@ -145,11 +145,11 @@ var inlineApp = {
     }
   },
   registerData: function(d) {
-    var login = (d.assignee) ? d.assignee.login : inlineApp.NOT_ASSIGNED;
-    if (!inlineApp.data[login]) {
-      inlineApp.data[login] = [];
+    var assignee = (d.assignee) ? d.assignee.login : inlineApp.NOT_ASSIGNED;
+    if (!inlineApp.data[assignee]) {
+      inlineApp.data[assignee] = [];
     }
-    inlineApp.data[login].push(d);
+    inlineApp.data[assignee].push(d);
   },
   retrieveNextFromLink: function(str) {
     if (!str) {
@@ -165,33 +165,41 @@ var inlineApp = {
     return null;
   },
   renderData: function() {
-    var dataTable = $('#dataTable'), thead = dataTable.find('thead'), tbody = dataTable.find('tbody'), rawKeys = Object.keys(inlineApp.data), max = 0, all = 0, assigned = 0, keys = [];
+    var dataTable = $('#dataTable');
+    var thead = dataTable.find('thead');
+    var tbody = dataTable.find('tbody');
+    var rawKeys = Object.keys(inlineApp.data);
+    var max = 0; // most assigned person's issues 
+    var all = 0;
+    var assigned = 0;
+    var assignees = [];
 
     rawKeys.sort();
-    keys.push(inlineApp.NOT_ASSIGNED);
+    assignees.push(inlineApp.NOT_ASSIGNED);
     for (var i = 0; i < rawKeys.length; i++) {
       if (rawKeys[i] != inlineApp.NOT_ASSIGNED) {
-        keys.push(rawKeys[i]);
+        assignees.push(rawKeys[i]);
       }
+    }
+
+    for (var i = 0; i < assignees.length; i++) {
+      if (max < inlineApp.data[assignees[i]].length) {
+        max = inlineApp.data[assignees[i]].length;
+      }
+      if (inlineApp.NOT_ASSIGNED != assignees[i]) {
+        assigned += inlineApp.data[assignees[i]].length;
+      }
+      all += inlineApp.data[assignees[i]].length;
     }
 
     thead.empty();
-    for (var i = 0; i < keys.length; i++) {
-      if (max < inlineApp.data[keys[i]].length) {
-        max = inlineApp.data[keys[i]].length;
-      }
-      if (inlineApp.NOT_ASSIGNED != keys[i]) {
-        assigned += inlineApp.data[keys[i]].length;
-      }
-      all += inlineApp.data[keys[i]].length;
-    }
     var tr = $('<tr></tr>');
-    tr.append('<th colspan="' + keys.length + '">assigned ' + assigned + ' / ' + all + '</th>')
+    tr.append('<th colspan="' + assignees.length + '">assigned ' + assigned + ' / ' + all + '</th>')
     thead.append(tr);
 
     var tr = $('<tr></tr>');
-    for (var i = 0; i < keys.length; i++) {
-      var th = $('<th></th>').text(keys[i] + '(' + inlineApp.data[keys[i]].length + ')');
+    for (var i = 0; i < assignees.length; i++) {
+      var th = $('<th></th>').text(assignees[i] + '(' + inlineApp.data[assignees[i]].length + ')');
       tr.append(th);
     }
     thead.append(tr);
@@ -199,42 +207,10 @@ var inlineApp = {
     tbody.empty();
     for (var i = 0; i < max; i++) {
       var tr = $('<tr></tr>');
-      for (var j = 0; j < keys.length; j++) {
-        var td = $('<td></td>'), issues = inlineApp.data[keys[j]];
+      for (var j = 0; j < assignees.length; j++) {
+        var td = $('<td></td>'), issues = inlineApp.data[assignees[j]];
         if (issues[i]) {
-          var a = $('<a></a>'), issue = issues[i], sp, urlParts = issue.url.split('/')
-
-          //org and repo (naive impl) https://api.github.com/repos/org/repo/issues/:id
-          sp = $('<span class="label label-info repoNames"></span>'), label = issue.labels[k];
-          sp.text(urlParts[4] + '/' + urlParts[5]);
-          td.append(sp);
-
-          if (issue.milestone) {
-            a = $('<a class="label label-default milestones"></a>');
-            a.text(issue.milestone.title);
-            a.attr('href', issue.milestone.html_url);
-            a.attr('target', '_blank');
-            td.append(a);
-          }
-          for (var k = 0; k < issue.labels.length; k++) {
-            sp = $('<span class="label labels"></span>'), label = issue.labels[k];
-            sp.text(label.name);
-            sp.css({
-              color: (inlineApp.nearbyWhite(label.color)) ? '#333' : '#f0f0f0',
-              backgroundColor: '#' + label.color
-            });
-            td.append(sp);
-          }
-          a = $('<a></a>');
-          a.attr('href', issue.html_url);
-          a.attr('target', '_blank');
-          a.text('#' + issue.number + ' ' + issue.title);
-          td.append(a);
-          if (inlineApp.state == 'all') {
-            sp = $('<span class="label ' + ((issue.state == 'open') ? 'label-info' : 'label-default')+ '"></span>');
-            sp.text(issue.state);
-            td.append(sp);
-          }
+          inlineApp.renderIssue(issues[i], td)
         }
         tr.append(td);
       }
@@ -245,6 +221,42 @@ var inlineApp = {
      $('#hideRepoNames').attr('checked', 'checked');
      inlineApp.toggleVisibility();
    }
+  },
+  renderIssue: function(issue, td) {
+
+    var a = $('<a></a>'), sp, urlParts = issue.url.split('/');
+
+    //org and repo (naive impl) https://api.github.com/repos/org/repo/issues/:id
+    sp = $('<span class="label label-info repoNames"></span>'), label = issue.labels[k];
+    sp.text(urlParts[4] + '/' + urlParts[5]);
+    td.append(sp);
+
+    if (issue.milestone) {
+      a = $('<a class="label label-default milestones"></a>');
+      a.text(issue.milestone.title);
+      a.attr('href', issue.milestone.html_url);
+      a.attr('target', '_blank');
+      td.append(a);
+    }
+    for (var k = 0; k < issue.labels.length; k++) {
+      sp = $('<span class="label labels"></span>'), label = issue.labels[k];
+      sp.text(label.name);
+      sp.css({
+        color: (inlineApp.nearbyWhite(label.color)) ? '#333' : '#f0f0f0',
+        backgroundColor: '#' + label.color
+      });
+      td.append(sp);
+    }
+    a = $('<a></a>');
+    a.attr('href', issue.html_url);
+    a.attr('target', '_blank');
+    a.text('#' + issue.number + ' ' + issue.title);
+    td.append(a);
+    if (inlineApp.state == 'all') {
+      sp = $('<span class="label ' + ((issue.state == 'open') ? 'label-info' : 'label-default')+ '"></span>');
+      sp.text(issue.state);
+      td.append(sp);
+    }
   },
   nearbyWhite: function(code) {
     var r = parseInt(code.substring(0, 2), 16), g = parseInt(code.substring(2, 4), 16), b = parseInt(code.substring(4, 6), 16);
