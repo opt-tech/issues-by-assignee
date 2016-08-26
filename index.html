@@ -32,6 +32,7 @@ var inlineApp = {
       return;
     }
     inlineApp.data = {};
+    inlineApp.data[inlineApp.NOT_ASSIGNED] = [];
     inlineApp.urlsNum = orgs.length;
     inlineApp.doneUrlsNum = 0;
     for (var i = 0; i < orgs.length; i++) {
