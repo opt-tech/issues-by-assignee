@@ -259,8 +259,13 @@ var inlineApp = {
       tbody.append(tr);
     }
 
-    if (inlineApp.urlsNum == 1) {
-      $('#hideRepoNames').attr('checked', 'checked');
+    if (inlineApp.urlsNum === 1) {
+      $('#hideRepoNames').prop('checked', true);
+    }
+    if (inlineApp.issueType !== `all`) {
+      $('#hidePrMarker').prop('checked', true);
+    } else {
+      $('#hidePrMarker').prop('checked', false);
     }
     inlineApp.toggleVisibility();
   },
@@ -339,7 +344,7 @@ var inlineApp = {
     } else {
       $('.labels').show();
     }
-    if (inlineApp.issueType !== 'all') {
+    if ($('#hidePrMarker').is(':checked')) {
       $('.isPr').hide();
     } else {
       $('.isPr').show();
@@ -436,6 +441,7 @@ $(function() {
     <label><input type="checkbox" id="hideRepoNames" value="1" onclick="inlineApp.toggleVisibility()" />hide repo names</label>
     &nbsp;<label><input type="checkbox" id="hideMilestones" value="1" onclick="inlineApp.toggleVisibility()" />hide milestones</label>
     &nbsp;<label><input type="checkbox" id="hideLabels" value="1" onclick="inlineApp.toggleVisibility()" />hide labels</label>
+    &nbsp;<label><input type="checkbox" id="hidePrMarker" value="1" onclick="inlineApp.toggleVisibility()" />hide PR marker</label>
   </div>
 
   <h3 id="loading" style="display: none;"></h3>
