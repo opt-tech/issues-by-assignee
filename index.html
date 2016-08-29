@@ -12,12 +12,13 @@
 <script src="https://code.jquery.com/jquery-1.12.0.min.js"></script>
 <script type="text/javascript">
 var inlineApp = {
-  data: { all: 0, assigned: 0, issues: {} },
+  data: {},
   urlsNum: 0,
   doneUrlsNum: 0,
   username: null,
   token: null,
   state: null,
+  issueType: null,
   NOT_ASSIGNED: '[NOT ASSIGNED]',
   start: function() {
     var orgs = $('input[name=org]').map(function(k, v) {
@@ -25,12 +26,20 @@ var inlineApp = {
     }), repos = $('input[name=repo]').map(function(k, v) {
       return $(v).val();
     });
+    inlineApp.issueType = $('#issueType').val();
     inlineApp.username = $('#username').val();
     inlineApp.token = $('#token').val();
     inlineApp.state = $('#state').val();
-    if (!(inlineApp.username && inlineApp.token && orgs && repos && inlineApp.state) || orgs.length == 0 || repos.length == 0 || !orgs[0] || !repos[0] || orgs.length != repos.length) {
+    if (!(inlineApp.username && inlineApp.token && orgs && repos && inlineApp.state && inlineApp.issueType) || orgs.length == 0 || repos.length == 0 || !orgs[0] || !repos[0] || orgs.length != repos.length) {
       return;
     }
+    inlineApp.data = {
+      allIssues: 0,
+      allPrs: 0,
+      assignedIssues: 0,
+      assignedPrs: 0,
+      issues: {}
+    };
     inlineApp.data.issues[inlineApp.NOT_ASSIGNED] = [];
     inlineApp.urlsNum = orgs.length;
     inlineApp.doneUrlsNum = 0;
@@ -145,11 +154,12 @@ var inlineApp = {
     }
   },
   registerData: function(d) {
-    inlineApp.data.all += 1;
+    d.pull_request ? d.isPr = true : d.isPr = false;
+    d.isPr ? inlineApp.data.allPrs += 1 : inlineApp.data.allIssues += 1 ;
     if (d.assignees.length == 0) {
       inlineApp.data.issues[inlineApp.NOT_ASSIGNED].push(d)
     } else {
-      inlineApp.data.assigned += 1;
+      d.isPr ? inlineApp.data.assignedPrs += 1 : inlineApp.data.assignedIssues += 1 ;
       for (var i = 0; i < d.assignees.length; i++) {
         var assignee = d.assignees[i].login
         if (!inlineApp.data.issues[assignee]) {
@@ -173,12 +183,42 @@ var inlineApp = {
     return null;
   },
   renderData: function() {
+    inlineApp.issueType = $('#issueType').val();
     var dataTable = $('#dataTable');
-    var thead = dataTable.find('thead');
-    var tbody = dataTable.find('tbody');
-    var rawKeys = Object.keys(inlineApp.data.issues);
+    var data = { all: 0, assigned: 0, issues: {} };
+    var filterObj = function(obj, cond) {
+      var res = {};
+      var keys = Object.keys(obj);
+      for (i = 0; i < keys.length; i++) {
+        res[keys[i]] = obj[keys[i]].filter(cond)
+      }
+      return res;
+    }
+    switch (inlineApp.issueType) {
+      case 'all':
+        data.all = inlineApp.data.allIssues + inlineApp.data.allPrs
+        data.assigned = inlineApp.data.assignedIssues + inlineApp.data.assignedPrs
+        data.issues = inlineApp.data.issues;
+        break;
+      case 'onlyIssues':
+        data.all = inlineApp.data.allIssues
+        data.assigned = inlineApp.data.assignedIssues
+        data.issues = filterObj(inlineApp.data.issues, function(d){ return !d.isPr; } )
+        break;
+      case 'onlyPRs':
+        data.all = inlineApp.data.allPrs
+        data.assigned = inlineApp.data.assignedPrs
+        data.issues = filterObj(inlineApp.data.issues, function(d){ return d.isPr; } )
+        break;
+    }
+    inlineApp.renderTable(data, dataTable);
+  },
+  renderTable: function(data, table) {
+    var thead = table.find('thead');
+    var tbody = table.find('tbody');
+    var rawKeys = Object.keys(data.issues);
     var max = 0; // most assigned person's issues
-    var assignees = [];
+    var assignees = []; // assignees sorted by name (NOT_ASSIGNED is at first)
 
     rawKeys.sort();
     assignees.push(inlineApp.NOT_ASSIGNED);
@@ -189,19 +229,19 @@ var inlineApp = {
     }
 
     for (var i = 0; i < assignees.length; i++) {
-      if (max < inlineApp.data.issues[assignees[i]].length) {
-        max = inlineApp.data.issues[assignees[i]].length;
+      if (max < data.issues[assignees[i]].length) {
+        max = data.issues[assignees[i]].length;
       }
     }
 
     thead.empty();
     var tr = $('<tr></tr>');
-    tr.append('<th colspan="' + assignees.length + '">assigned ' + inlineApp.data.assigned + ' / ' + inlineApp.data.all + '</th>')
+    tr.append('<th colspan="' + assignees.length + '">assigned ' + data.assigned + ' / ' + data.all + '</th>')
     thead.append(tr);
 
     var tr = $('<tr></tr>');
     for (var i = 0; i < assignees.length; i++) {
-      var th = $('<th></th>').text(assignees[i] + '(' + inlineApp.data.issues[assignees[i]].length + ')');
+      var th = $('<th></th>').text(assignees[i] + '(' + data.issues[assignees[i]].length + ')');
       tr.append(th);
     }
     thead.append(tr);
@@ -210,19 +250,24 @@ var inlineApp = {
     for (var i = 0; i < max; i++) {
       var tr = $('<tr></tr>');
       for (var j = 0; j < assignees.length; j++) {
-        var td = $('<td></td>'), issues = inlineApp.data.issues[assignees[j]];
+        var td = $('<td></td>'), issues = data.issues[assignees[j]];
         if (issues[i]) {
           inlineApp.renderIssue(issues[i], td)
         }
         tr.append(td);
       }
       tbody.append(tr);
-   }
+    }
 
-   if (inlineApp.urlsNum == 1) {
-     $('#hideRepoNames').attr('checked', 'checked');
-     inlineApp.toggleVisibility();
-   }
+    if (inlineApp.urlsNum === 1) {
+      $('#hideRepoNames').prop('checked', true);
+    }
+    if (inlineApp.issueType !== `all`) {
+      $('#hidePrMarker').prop('checked', true);
+    } else {
+      $('#hidePrMarker').prop('checked', false);
+    }
+    inlineApp.toggleVisibility();
   },
   renderIssue: function(issue, td) {
 
@@ -232,6 +277,12 @@ var inlineApp = {
     sp = $('<span class="label label-info repoNames"></span>'), label = issue.labels[k];
     sp.text(urlParts[4] + '/' + urlParts[5]);
     td.append(sp);
+
+    if (issue.isPr) {
+      var sp = $('<span class="label label-primary isPr"></span>')
+      sp.text('PullRequest');
+      td.append(sp);
+    }
 
     if (issue.milestone) {
       a = $('<a class="label label-default milestones"></a>');
@@ -292,6 +343,11 @@ var inlineApp = {
       $('.labels').hide();
     } else {
       $('.labels').show();
+    }
+    if ($('#hidePrMarker').is(':checked')) {
+      $('.isPr').hide();
+    } else {
+      $('.isPr').show();
     }
   },
   addRepo: function(orgVal, repoVal) {
@@ -369,10 +425,23 @@ $(function() {
     <button type="submit" class="btn btn-success">Search</button>
   </form>
 
+  <h4>set visibilities</h4>
+
+  <div class="form-group">
+    <label for="issueType">issue type</label>
+    <span class="form-inline">
+      <select class="form-control" id="issueType" onchange="inlineApp.renderData()">
+        <option value="all">issues & pull requests</option>
+        <option value="onlyIssues">only issues</option>
+        <option value="onlyPRs">only pull requests</option>
+      </select>
+    </span>
+  </div>
   <div class="form-group form-inline">
     <label><input type="checkbox" id="hideRepoNames" value="1" onclick="inlineApp.toggleVisibility()" />hide repo names</label>
     &nbsp;<label><input type="checkbox" id="hideMilestones" value="1" onclick="inlineApp.toggleVisibility()" />hide milestones</label>
     &nbsp;<label><input type="checkbox" id="hideLabels" value="1" onclick="inlineApp.toggleVisibility()" />hide labels</label>
+    &nbsp;<label><input type="checkbox" id="hidePrMarker" value="1" onclick="inlineApp.toggleVisibility()" />hide PR marker</label>
   </div>
 
   <h3 id="loading" style="display: none;"></h3>
