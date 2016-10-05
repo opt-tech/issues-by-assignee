@@ -38,9 +38,11 @@ var inlineApp = {
       allPrs: 0,
       assignedIssues: 0,
       assignedPrs: 0,
-      issues: {}
+      issues: {},
+      storypoint: {}
     };
     inlineApp.data.issues[inlineApp.NOT_ASSIGNED] = [];
+    inlineApp.data.storypoint[inlineApp.NOT_ASSIGNED] = 0;
     inlineApp.urlsNum = orgs.length;
     inlineApp.doneUrlsNum = 0;
     for (var i = 0; i < orgs.length; i++) {
@@ -158,16 +160,32 @@ var inlineApp = {
     d.isPr ? inlineApp.data.allPrs += 1 : inlineApp.data.allIssues += 1 ;
     if (d.assignees.length == 0) {
       inlineApp.data.issues[inlineApp.NOT_ASSIGNED].push(d)
+      inlineApp.data.storypoint[inlineApp.NOT_ASSIGNED] += inlineApp.retrieveStoryPoint(d);
     } else {
       d.isPr ? inlineApp.data.assignedPrs += 1 : inlineApp.data.assignedIssues += 1 ;
       for (var i = 0; i < d.assignees.length; i++) {
         var assignee = d.assignees[i].login
         if (!inlineApp.data.issues[assignee]) {
           inlineApp.data.issues[assignee] = [];
+          inlineApp.data.storypoint[assignee] = 0;
         }
         inlineApp.data.issues[assignee].push(d);
+        inlineApp.data.storypoint[assignee] += inlineApp.retrieveStoryPoint(d);
       }
     }
+  },
+  retrieveStoryPoint: function(issue) {
+    var point = 0;
+    // treat as storypoint if label's name is only digits.
+    for (var j = 0; j < issue.labels.length; j++) {
+      label = issue.labels[j];
+      if (label.name.match(/^[0-9\.]+$/)) {
+         point += +label.name;
+      } else if (label.name === '1/2') {
+        point += 0.5;
+      }
+    }
+    return point;
   },
   retrieveNextFromLink: function(str) {
     if (!str) {
@@ -185,7 +203,12 @@ var inlineApp = {
   renderData: function() {
     inlineApp.issueType = $('#issueType').val();
     var dataTable = $('#dataTable');
-    var data = { all: 0, assigned: 0, issues: {} };
+    var data = {
+      all: 0,
+      assigned: 0,
+      issues: {},
+      storypoint: inlineApp.data.storypoint
+    };
     var filterObj = function(obj, cond) {
       var res = {};
       var keys = Object.keys(obj);
@@ -242,6 +265,7 @@ var inlineApp = {
     var tr = $('<tr></tr>');
     for (var i = 0; i < assignees.length; i++) {
       var th = $('<th></th>').text(assignees[i] + '(' + data.issues[assignees[i]].length + ')');
+      th.append('<span class="storypoint" style="margin-left: 1em;">storypoint:' + +data.storypoint[assignees[i]] + '</span>');
       tr.append(th);
     }
     thead.append(tr);
@@ -349,6 +373,11 @@ var inlineApp = {
     } else {
       $('.isPr').show();
     }
+    if ($('#hideStoryPoint').is(':checked')) {
+      $('.storypoint').hide();
+    } else {
+      $('.storypoint').show();
+    }
   },
   addRepo: function(orgVal, repoVal) {
     var box = $(document.createElement('div')), org = $(document.createElement('input')), repo = $(document.createElement('input')), btn = $(document.createElement('button'));
@@ -442,6 +471,7 @@ $(function() {
     &nbsp;<label><input type="checkbox" id="hideMilestones" value="1" onclick="inlineApp.toggleVisibility()" />hide milestones</label>
     &nbsp;<label><input type="checkbox" id="hideLabels" value="1" onclick="inlineApp.toggleVisibility()" />hide labels</label>
     &nbsp;<label><input type="checkbox" id="hidePrMarker" value="1" onclick="inlineApp.toggleVisibility()" />hide PR marker</label>
+    &nbsp;<label><input type="checkbox" id="hideStoryPoint" value="1" onclick="inlineApp.toggleVisibility()" />hide story point (digits only label is treated as a story point)</label>
   </div>
 
   <h3 id="loading" style="display: none;"></h3>
